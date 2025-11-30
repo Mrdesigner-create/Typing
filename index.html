@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FastType — Visual Studio Style Code Typing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --good:#16a34a; --bad:#ef4444;
+    --glass: rgba(255,255,255,0.03);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; min-height:100vh; background:
+    linear-gradient(180deg,#071028 0%, #071028 40%, #041423 100%); color:#e6eef6; display:flex; align-items:center; justify-content:center; padding:20px;}
+  /* Use flex-col to stack main content and keyboard vertically */
+  .app{width:100%;max-width:1000px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; padding:18px; box-shadow: 0 8px 30px rgba(2,6,23,0.6); display: flex; flex-direction: column;}
+  header{display:flex;align-items:center;justify-content:space-between; gap:12px; margin-bottom:12px;}
+  h1{font-size:20px;margin:0}
+  .controls{display:flex;gap:8px;align-items:center; flex-wrap: wrap;} 
+  /* --- DROPDOWN COLORING (RED) --- */
+  select, button{
+    background: linear-gradient(90deg, #077990, #046575);
+    color: #fff;
+    border:1px solid #06b6d4;
+    padding:8px 10px; border-radius:8px; font-size:14px; cursor: pointer;
+  }
+  select {
+      background: rgba(239, 68, 68, 0.2); 
+      border: 1px solid var(--bad); 
+      color: var(--bad); 
+  }
+  select option {
+      background-color: var(--card); 
+      color: var(--bad) !important; 
+      font-weight: bold;
+      padding: 5px;
+  }
+  /* --- END DROPDOWN COLORING --- */
+
+  button.primary{background:linear-gradient(90deg,var(--accent),#3b82f6);color:#001; font-weight:700}
+  .content-area {
+      display:grid;
+      grid-template-columns:1fr 300px;
+      gap:16px;
+      width: 100%;
+      margin-bottom: 25px;
+  }
+  @media (max-width:1050px){ .content-area{max-width: 900px;} }
+  @media (max-width:880px){ .content-area{grid-template-columns:1fr} .sidebar{order:2} }
+  
+  .word-area{height:250px; overflow:auto; padding:12px; border-radius:8px; background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent); font-family: monospace; font-size: 18px;}
+  
+  .card{background:rgba(255,255,255,0.02); padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.03)}
+  .word {display:inline-block; margin:6px 10px; font-size:20px; color:#d4d4d4; white-space: pre;} /* Default color: VS Default Text */
+  .word.current{color:#fff; text-decoration:underline 2px var(--accent);}
+  .word.incorrect{color:var(--bad); text-decoration: line-through 2px var(--bad);}
+  .word.correct{color:var(--good); text-decoration: none;}
+
+  /* --- SYNTAX HIGHLIGHTING CLASSES (VS 2022 Dark Theme) --- */
+  .vs-keyword { color: #569cd6; font-weight: 500; } /* Light Blue (e.g., function, class, def, public) */
+  .vs-string { color: #ce9178; } /* Orange/Brown (e.g., "hello") */
+  .vs-comment { color: #6a9955; } /* Green (e.g., //, #, /*) */
+  .vs-number { color: #b5cea8; } /* Light Green/Number */
+  .vs-operator { color: #d4d4d4; } /* White/Grey (e.g., +, =, ;) */
+  .vs-type { color: #4ec9b0; } /* Teal/Light Green (e.g., int, String, class names) */
+  .vs-builtin { color: #dcdcaa; } /* Yellow (e.g., console, System, print, length) */
+  .vs-html-tag { color: #808080; } /* Grey for < and > */
+  .vs-html-name { color: #569cd6; } /* Light Blue for tag name (div, h1) */
+  .vs-attribute { color: #9cd6ac; } /* Light Green (e.g., id, class, href) */
+  .vs-css-selector { color: #d7ba7d; } /* Gold/Brown (e.g., .card, #header) */
+  .vs-css-property { color: #c586c0; } /* Magenta/Purple (e.g., font-size, margin) */
+  .vs-css-value { color: #ce9178; } /* Orange/Brown (e.g., 10px, auto) */
+  .vs-macro { color: #c8c8c8; } /* Light Gray (e.g., !DOCTYPE, import statements) */
+  /* --- END SYNTAX HIGHLIGHTING CLASSES --- */
+
+
+  .input-row{display:flex; gap:8px; margin-top:12px; align-items:center}
+  input[type="text"], textarea, input[type="number"]{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04); background:transparent;color:inherit;font-size:16px; outline:none}
+  .small{font-size:13px;color:var(--muted)}
+
+  /* Custom Modal Styles (Keep the same) */
+  .custom-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); padding-top: 50px; }
+  .modal-content { background-color: var(--card); margin: 5% auto; padding: 20px; border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 600px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+  .close-btn { color: var(--muted); float: right; font-size: 28px; font-weight: bold; }
+  .close-btn:hover, .close-btn:focus { color: #fff; text-decoration: none; cursor: pointer; }
+  textarea { width: 100%; height: 200px; margin-top: 10px; resize: vertical; font-family: monospace; font-size: 14px; background-color: rgba(0,0,0,0.2); }
+
+  /* Virtual Keyboard Styles (Same as previous) */
+  .keyboard-container {
+    margin-top: 15px; 
+    background: #1e293b; 
+    padding: 10px;
+    max-width: 900px; 
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.5); 
+    display: flex; 
+    flex-direction: column;
+    align-items: center; 
+    align-self: center; 
+  }
+  .keyboard-row {
+    display: flex;
+    justify-content: center; 
+    margin-bottom: 6px; 
+    width: 100%;
+  }
+  .key {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2f4059; 
+    color: #f1f5f9;
+    border-radius: 4px; 
+    margin: 2px; 
+    height: 40px; 
+    min-width: 35px; 
+    flex-basis: 0; 
+    flex-grow: 1; 
+    flex-shrink: 1;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.1s ease-out;
+    box-shadow: 0 3px 0 #1b2838; 
+    cursor: default;
+    user-select: none;
+    position: relative;
+    padding: 0 2px; 
+    text-transform: uppercase;
+  }
+  .key.highlight {
+    background-color: var(--accent); 
+    color: #000;
+    box-shadow: 0 3px 0 #04768b; 
+    font-weight: bold;
+    transform: translateY(-1px); 
+    border: 1px solid white;
+  }
+  .key.backspace { flex-grow: 1.8; }
+  .key.tab { flex-grow: 1.4; }
+  .key.caps { flex-grow: 1.6; }
+  .key.enter { flex-grow: 2.2; background: #6366f1; box-shadow: 0 3px 0 #4338ca; }
+  .key.shift { flex-grow: 2.5; }
+  .key.large { flex-grow: 1.5; } 
+  .key.space { flex-grow: 10; min-width: 250px; text-transform: none; }
+  .key.small { flex-grow: 1; font-size: 10px; } 
+
+  .key-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    line-height: 1;
+    height: 100%;
+    width: 100%;
+  }
+  .key-content .top-char {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      font-size: 10px;
+      opacity: 0.8;
+  }
+  .key-content .bottom-char {
+      position: absolute;
+      bottom: 4px;
+      right: 6px;
+      font-size: 14px;
+      text-transform: uppercase;
+  }
+  .key-content:not(:has(.top-char)):not(:has(.bottom-char)) {
+      font-size: 14px;
+      text-transform: uppercase;
+      justify-content: center; 
+      padding: 0;
+  }
+  
+  @media (max-width: 640px) {
+    .keyboard-container { max-width: 100%; padding: 6px; border-radius: 8px; }
+    .key {
+      height: 35px;
+      min-width: 25px;
+      margin: 1px;
+      font-size: 11px;
+    }
+    .key-content .top-char { font-size: 8px; top: 3px; left: 4px; }
+    .key-content .bottom-char { font-size: 11px; bottom: 3px; right: 4px; }
+    .key-content:not(:has(.top-char)):not(:has(.bottom-char)) { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="main">
+    <header>
+      <h1>
+	  <div class="text-xl font-bold">FastType — Typing Game</div>
+      </h1>
+      <div class="controls">
+        <label class="small" for="duration">Time:</label>
+        <!-- Time Controls Group -->
+        <div id="timeControlGroup" style="display: flex; gap: 8px; align-items: center;">
+            <select id="duration" title="Test duration">
+              <option value="30">30s</option>
+              <option value="60" selected>60s</option>
+              <option value="120">120s</option>
+              <option value="unlimited">Unlimited</option>
+              <option value="custom_input">Custom</option>
+            </select>
+            <input id="customTimeInput" type="number" min="1" max="600" value="180" placeholder="Seconds" style="width: 80px; display: none; padding: 8px 6px; border-radius: 8px; background: rgba(255,255,255,0.05); font-size: 14px;" />
+        </div>
+        <!-- End Time Controls Group -->
+
+        <label class="small" for="difficulty">Difficulty:</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+        
+        <label class="small" for="sourceSelect">Source:</label>
+        <select id="sourceSelect" title="Text Source">
+          <option value="wordlist" selected>Word List (Default)</option>
+          <option value="mahabharat">Mahabharat</option>
+          <option value="ramayan">Ramayan</option>
+          <option value="motivation">Motivation</option>
+          <option value="gk">GK</option>
+          <option value="it_knowledge">IT Knowledge</option>
+          <option value="python">Python Code</option>
+          <option value="css">CSS Code</option>
+          <option value="html">HTML Code</option>
+          <option value="java">Java Code</option>
+          <option value="javascript">JavaScript Code</option>
+          <option value="custom">Custom Text</option>
+        </select>
+        <button id="customSourceBtn">Edit Custom</button>
+        
+        <!-- New Keyboard Toggle Button -->
+        <button id="keyboardToggleBtn">Show Keyboard</button>
+
+        <button id="restart" class="primary">Start / Restart</button>
+      </div>
+    </header>
+
+    <div class="content-area">
+      <div>
+        <div class="card">
+          <!-- Word area now uses monospace font for code typing -->
+          <div class="word-area" id="wordArea" aria-live="polite" aria-atomic="true"></div>
+
+          <div class="input-row">
+            <!-- Input text will also use monospace font -->
+            <input id="textInput" type="text" placeholder="Type the highlighted word and press space" autocomplete="off" inputmode="text" style="font-family: monospace;" />
+            <div class="small" id="timeLeft">60s</div>
+          </div>
+
+          <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="small">Words typed: <strong id="wordsTyped">0</strong></div>
+            <div class="small">Correct: <strong id="correctCount">0</strong></div>
+            <div class="small">Incorrect: <strong id="incorrectCount">0</strong></div>
+            <div class="small">Accuracy: <strong id="accuracy">100%</strong></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>Live WPM</strong><div class="small">Words Per Minute</div></div>
+            <div style="font-weight:700;font-size:20px" id="wpm">0</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="small">Progress</div>
+            <div class="meter" style="margin-top:6px"><i id="progBar"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="sidebar card">
+        <div style="font-weight:700; margin-bottom:8px">Leaderboard</div>
+        <div class="leaderboard small">
+          <ol id="leaderboardList"></ol>
+        </div>
+        <div style="margin-top:12px">
+          <div class="small" style="margin-bottom:6px"><strong>Tips</strong></div>
+          <ul class="small" style="margin:0 0 8px 18px">
+            <li>Keep eyes on the next word (don't switch to the input too often)</li>
+            <li>Use space to submit a word; Backspace to correct before submitting</li>
+            <li>Start slow, increase speed while keeping accuracy</li>
+          </ul>
+        </div>
+        <div style="margin-top:12px">
+          <label class="small">Name for leaderboard:</label>
+          <input id="playerName" type="text" placeholder="Your name (optional)" style="width:100%; margin-top:6px; padding:8px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,0.04); color:inherit"/>
+          <button id="saveScore" style="margin-top:8px;width:100%" title="Save score to local leaderboard">Save Score</button>
+          <button id="clearBoard" style="margin-top:8px;width:100%">Clear Leaderboard</button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Virtual Keyboard Container -->
+    <div id="virtualKeyboard" class="keyboard-container" style="display: none;">
+      <!-- Keyboard structure will be injected here by JS -->
+    </div>
+
+    <footer>
+      <div class="small">Typing Game Demo</div>
+      <div class="small">Words: <span id="wordCount">0</span></div>
+    </footer>
+    
+  </div>
+  
+  <!-- Custom Text Modal -->
+  <div id="customModal" class="custom-modal">
+    <div class="modal-content">
+      <span class="close-btn" id="closeModal">&times;</span>
+      <h2>Paste Custom Text</h2>
+      <p class="small">Paste the text you want to use for the typing test here. The test will start immediately after submission. **Highlighting will use JavaScript rules.**</p>
+      <textarea id="customTextArea" placeholder="Paste your story, code, or knowledge here..."></textarea>
+      <button id="submitCustomText" class="primary" style="width:100%; margin-top:10px;">Submit Custom Text</button>
+    </div>
+  </div>
+
+
+<script>
+(() => {
+  // Word lists (Original base words for the 'Word List' source)
+  const BASE_WORDS = {
+    easy: "cat dog tree book sun car map blue red jump run time hour year life mind spirit heart power strength energy focus speed quick slow fast".split(" "),
+    medium: ("apple banana orange school family travel camera laptop " +
+             "keyboard mouse bottle river mountain garden jungle bridge science logic theory concept data base system network code script function array " +
+             "design pattern module variable constant integer float string boolean condition loop iteration object class method property element attribute").split(" "),
+    hard: ("algorithm variable function asynchronous polymorphism encapsulation " +
+           "inheritance concurrency optimization serialization deserialization hypothetical quintessential paradox anomaly conjecture skepticism verification " +
+           "meticulous heterogeneous monolithic ubiquitous infrastructure paradigm architecture environment configuration scalability performance security").split(" ")
+  };
+
+  // Custom Content Sources - **NOW ARRAYS OF STRINGS**
+  const CUSTOM_SOURCES = {
+    // Mahabharat - 3 distinct passages
+    mahabharat: [
+        "The Mahabharata is an epic narrative of the Kurukshetra War and the fates of the Kaurava and Pandava princes. It also contains profound philosophical and devotional material, such as the Bhagavad Gita, which is a dialogue between Prince Arjuna and his guide Lord Krishna. It emphasizes dharma, duty, and righteous action above all else.",
+        "Duryodhana, the eldest of the Kauravas, was known for his envy and relentless pursuit of power, which ultimately led to the great war. The counsel of Vidura, a wise and righteous figure, often went unheeded, highlighting the tragic consequences of pride and moral blindness in the epic.",
+        "The dice game, a pivotal event, led to the exile of the Pandavas for twelve years, followed by a year of anonymity. This period of hardship tested their resolve and strengthened their bond, preparing them for the inevitable conflict against their cousins."
+    ],
+    // Ramayan - 3 distinct passages
+    ramayan: [
+        "The Ramayana tells the story of Lord Rama's journey, which involves his exile from Ayodhya and his quest to rescue his beloved wife, Sita, from the demon king Ravana. This epic showcases the ideals of relationships, duty, and sacrifice, defining what constitutes an ideal king, brother, husband, and servant.",
+        "Hanuman, the devoted vanara, played a crucial role in locating Sita and helping Rama's army cross the sea to Lanka. His strength, devotion, and aerial capabilities are legendary, serving as a model for selfless service in the Hindu tradition.",
+        "Upon returning to Ayodhya after defeating Ravana, Rama's reign was characterized by peace and justice, a golden age known as Rama Rajya. The epic's central theme is the triumph of good over evil and the importance of adhering to dharma."
+    ],
+    // Motivation - 3 distinct snippets
+    motivation: [
+        "Success is not final, failure is not fatal: it is the courage to continue that counts. The mind is everything. What you think, you become. Believe you can and you're halfway there. Your time is limited, so don't waste it living someone else's life. Embrace the journey of consistent self-improvement and never give up on your biggest dreams.",
+        "Do not wait to strike till the iron is hot; but make the iron hot by striking. Continuous effort, not strength or intelligence, is the key to unlocking our potential. Every morning brings new hope and the chance to leave yesterday behind.",
+        "The best way to predict the future is to create it. Don't be afraid to give up the good to go for the great. Action is the foundational key to all success. Start where you are. Use what you have. Do what you can."
+    ],
+    // GK - 3 distinct facts/statements
+    gk: [
+        "The capital of Australia is Canberra, not Sydney. The largest planet in our solar system is Jupiter. Water's chemical formula is H₂O. The French Revolution began in 1789. The human body has two hundred and six bones. Mount Everest is the highest mountain in the world, located in the Mahalangur Himalayas.",
+        "The Earth orbits the Sun in an elliptical path, taking approximately 365.25 days to complete one revolution. Photosynthesis is the process used by plants to convert light energy into chemical energy, primarily producing glucose and oxygen.",
+        "The currency of Japan is the Yen. Marie Curie was the first woman to win a Nobel Prize and the only person to win a Nobel Prize in two different sciences (Physics and Chemistry). The Great Wall of China is not visible from space with the naked eye."
+    ],
+    // IT Knowledge - 3 distinct passages
+    it_knowledge: [
+        "Information Technology (IT) is the use of computers to store, retrieve, transmit, and manipulate data or information. It commonly includes hardware, software, networking, and data management. Cybersecurity is an increasingly critical aspect of IT, focusing on protecting systems and data from digital attacks.",
+        "A database management system (DBMS) is software that interacts with the user, applications, and the database itself to capture and analyze data. SQL (Structured Query Language) is the standard language for relational database management systems.",
+        "Cloud computing involves delivering computing services—including servers, storage, databases, networking, software, analytics, and intelligence—over the Internet (the 'cloud') to offer faster innovation, flexible resources, and economies of scale."
+    ],
+    // Python Code - 3 distinct snippets
+    python: [
+        "def calculate_area(radius):\n    import math\n    area = math.pi * radius ** 2\n    return area\n\n# Example usage:\ncircle_area = calculate_area(5)\nprint(f'The area is: {circle_area}')",
+        "def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + middle + quicksort(right)",
+        "class FileManager:\n    def __init__(self, filename):\n        self.filename = filename\n    def read_file(self):\n        with open(self.filename, 'r') as f:\n            return f.read()\n# file_manager = FileManager('data.txt')"
+    ],
+    // CSS Code - 3 distinct snippets
+    css: [
+        "/* Global reset and basic styles */\nbody {\n  margin: 0;\n  padding: 0;\n  font-family: Arial, sans-serif;\n}\n\n/* Flexbox layout for centering */\n.center-container {\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  min-height: 100vh;\n}",
+        ".card {\n  background-color: #1e1e2f;\n  border-radius: 8px;\n  padding: 20px;\n  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n  transition: transform 0.3s ease;\n}\n.card:hover {\n  transform: translateY(-5px);\n}",
+        "@keyframes fadeIn {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}\n\n.animated-element {\n  animation: fadeIn 1s ease-out;\n  visibility: visible;\n  opacity: 1;\n}"
+    ],
+    // HTML Code - 3 distinct snippets
+    html: [
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Simple Page</title>\n</head>\n<body>\n  <h1>Welcome</h1>\n  <p>This is a paragraph with <strong>important</strong> text.</p>\n  <button id=\"actionBtn\">Click Me</button>\n</body>\n</html>",
+        "<div id=\"header\">\n  <nav>\n    <a href=\"#home\">Home</a>\n    <a href=\"#about\">About</a>\n    <a href=\"#contact\">Contact</a>\n  </nav>\n</div>\n<main>\n  <article></article>\n</main>",
+        "<form action=\"/submit\" method=\"POST\">\n  <label for=\"name\">Name:</label>\n  <input type=\"text\" id=\"name\" name=\"name\" required>\n  <label for=\"email\">Email:</label>\n  <input type=\"email\" id=\"email\" name=\"email\">\n  <button type=\"submit\">Send</button>\n</form>"
+    ],
+    // Java Code - 3 distinct snippets
+    java: [
+        "class Vehicle {\n  String color;\n  int speed;\n\n  public Vehicle(String c, int s) {\n    this.color = c;\n    this.speed = s;\n  }\n\n  public void accelerate() {\n    speed += 10;\n    System.out.println(\"Speed: \" + speed);\n  }\n}",
+        "public class ArraySum {\n    public static int calculate(int[] arr) {\n        int sum = 0;\n        for (int i = 0; i < arr.length; i++) {\n            sum += arr[i];\n        }\n        return sum;\n    }\n}",
+        "import java.util.Scanner;\n\npublic class InputExample {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        System.out.print(\"Enter your name: \");\n        String name = scanner.nextLine();\n        System.out.println(\"Hello, \" + name);\n    }\n}"
+    ],
+    // JavaScript Code - 3 distinct snippets
+    javascript: [
+        "const button = document.getElementById('actionBtn');\n\nbutton.addEventListener('click', () => {\n  // Using an arrow function for the event handler\n  const message = 'Button was clicked!';\n  console.log(message);\n  // Using console.log instead of alert()\n});",
+        "async function fetchData(url) {\n    try {\n        const response = await fetch(url);\n        const data = await response.json();\n        return data;\n    } catch (error) {\n        console.error('Error fetching data:', error);\n    }\n}",
+        "function debounce(func, delay) {\n    let timeoutId;\n    return function(...args) {\n        clearTimeout(timeoutId);\n        timeoutId = setTimeout(() => {\n            func.apply(this, args);\n        }, delay);\n    };\n}"
+    ],
+    // Custom Text (Start as a single string, will be updated by user)
+    custom: ["Type your custom text here after submitting it from the modal! This text is currently just a placeholder."]
+  };
+  
+  // Track which version of the custom source was last used for round-robin
+  const SOURCE_INDEXES = {
+      mahabharat: 0, ramayan: 0, motivation: 0, gk: 0, it_knowledge: 0, 
+      python: 0, css: 0, html: 0, java: 0, javascript: 0, custom: 0
+  };
+
+  
+  // --- Virtual Keyboard Layout (US QWERTY) --- (Same as previous)
+  const KEYBOARD_LAYOUT = [
+      // Row 1: Numbers/Symbols
+      [
+          {char: '`', shift: '~', data: '`'}, {char: '1', shift: '!', data: '1'}, {char: '2', shift: '@', data: '2'}, 
+          {char: '3', shift: '#', data: '3'}, {char: '4', shift: '$', data: '4'}, {char: '5', shift: '%', data: '5'}, 
+          {char: '6', shift: '^', data: '6'}, {char: '7', shift: '&', data: '7'}, {char: '8', shift: '*', data: '8'}, 
+          {char: '9', shift: '(', data: '9'}, {char: '0', shift: ')', data: '0'}, {char: '-', shift: '_', data: '-'}, 
+          {char: '=', shift: '+', data: '='}, {text: 'BACKSPACE', class: 'backspace', data: 'Backspace'}
+      ],
+      // Row 2: QWERTY
+      [
+          {text: 'TAB', class: 'tab', data: 'Tab'}, {char: 'q', data: 'q'}, {char: 'w', data: 'w'}, {char: 'e', data: 'e'}, 
+          {char: 'r', data: 'r'}, {char: 't', data: 't'}, {char: 'y', data: 'y'}, {char: 'u', data: 'u'}, 
+          {char: 'i', data: 'i'}, {char: 'o', data: 'o'}, {char: 'p', data: 'p'}, {char: '[', shift: '{', data: '['}, 
+          {char: ']', shift: '}', data: ']'}, {char: '\\', shift: '|', data: '\\', class: 'large'}
+      ],
+      // Row 3: ASDFG
+      [
+          {text: 'CAPS', class: 'caps', data: 'CapsLock'}, {char: 'a', data: 'a'}, {char: 's', data: 's'}, {char: 'd', data: 'd'}, 
+          {char: 'f', data: 'f'}, {char: 'g', data: 'g'}, {char: 'h', data: 'h'}, {char: 'j', data: 'j'}, 
+          {char: 'k', data: 'k'}, {char: 'l', data: 'l'}, {char: ';', shift: ':', data: ';'}, 
+          {char: '\'', shift: '"', data: '\''}, {text: 'ENTER', class: 'enter', data: 'Enter'}
+      ],
+      // Row 4: ZXC...
+      [
+          {text: 'SHIFT', class: 'shift left-shift', data: 'ShiftLeft'}, {char: 'z', data: 'z'}, {char: 'x', data: 'x'}, {char: 'c', data: 'c'}, 
+          {char: 'v', data: 'v'}, {char: 'b', data: 'b'}, {char: 'n', data: 'n'}, {char: 'm', data: 'm'}, 
+          {char: ',', shift: '<', data: ','}, {char: '.', shift: '>', data: '.'}, {char: '/', shift: '?', data: '/'}, 
+          {text: 'SHIFT', class: 'shift right-shift', data: 'ShiftRight'}
+      ],
+      // Row 5: Space Bar (Simplified to just space and dummy control keys)
+      [
+          {text: 'CTRL', class: 'small', data: 'ControlLeft'}, {text: 'FN', class: 'small', data: 'Fn'}, {text: 'ALT', class: 'small', data: 'AltLeft'}, 
+          {text: 'SPACE', char: ' ', data: ' ', class: 'space'}, 
+          {text: 'ALT', class: 'small', data: 'AltRight'}, {text: 'CTRL', class: 'small', data: 'ControlRight'}
+      ]
+  ];
+
+  // DOM Elements
+  const wordArea = document.getElementById('wordArea');
+  const textInput = document.getElementById('textInput');
+  const restartBtn = document.getElementById('restart');
+  const durationSelect = document.getElementById('duration');
+  const customTimeInput = document.getElementById('customTimeInput');
+  const difficultySelect = document.getElementById('difficulty');
+  const sourceSelect = document.getElementById('sourceSelect'); 
+  const customSourceBtn = document.getElementById('customSourceBtn'); 
+  const timeLeftEl = document.getElementById('timeLeft');
+  const wordsTypedEl = document.getElementById('wordsTyped');
+  const correctEl = document.getElementById('correctCount');
+  const incorrectEl = document.getElementById('incorrectCount');
+  const accuracyEl = document.getElementById('accuracy');
+  const wpmEl = document.getElementById('wpm');
+  const progBar = document.getElementById('progBar');
+  const nameInput = document.getElementById('playerName');
+  const saveBtn = document.getElementById('saveScore');
+  const clearBtn = document.getElementById('clearBoard');
+  const leaderboardList = document.getElementById('leaderboardList');
+  const wordCountEl = document.getElementById('wordCount');
+  const keyboardToggleBtn = document.getElementById('keyboardToggleBtn'); 
+  const virtualKeyboard = document.getElementById('virtualKeyboard'); 
+
+  // Modal DOM Elements
+  const customModal = document.getElementById('customModal'); 
+  const closeModal = document.getElementById('closeModal'); 
+  const customTextArea = document.getElementById('customTextArea'); 
+  const submitCustomTextBtn = document.getElementById('submitCustomText'); 
+
+  let words = []; 
+  let currentIndex = 0;
+  let timer = null;
+  let timeLeft = 60;
+  let started = false;
+  let isUnlimited = false;
+  let typedWords = 0, correct = 0, incorrect = 0;
+  let duration = 60;
+  let currentKeyElement = null; // Track currently highlighted key
+  let currentShiftKeyElement = null; // Track currently highlighted Shift key
+
+  // --- SYNTAX HIGHLIGHTING LOGIC (Visual Studio 2022 Inspired) ---
+
+  // Standard Keywords (Light Blue: #569cd6)
+  const KEYWORDS = {
+      python: /^(def|class|import|from|return|if|else|elif|for|while|in|is|not|and|or|try|except|finally|with|as|yield|lambda)$/,
+      javascript: /^(function|const|let|var|if|else|return|for|while|switch|case|break|continue|import|export|await|async|try|catch|new|class|this|of|get|set)$/,
+      java: /^(public|private|protected|class|static|void|import|package|if|else|for|while|return|new|this|extends|implements)$/,
+  };
+
+  // Type Identifiers (Teal: #4ec9b0)
+  const TYPE_IDENTIFIERS = {
+      python: /^(int|float|str|bool|list|dict|tuple|set|True|False|None)$/,
+      javascript: /^(boolean|number|string|object|Array|Promise|Error)$/,
+      java: /^(int|String|boolean|double|float|long|short|char|void)$/,
+  };
+  
+  // Built-in Functions/Objects (Yellow: #dcdcaa)
+  const BUILTINS = {
+      python: /^(print|len|range|open|input|enumerate|math|self)$/,
+      javascript: /^(console|log|getElementById|addEventListener|fetch|JSON|setTimeout|clearTimeout|apply|length|error)$/,
+      java: /^(System|out|in|println|Scanner|main|args|length|Thread)$/,
+  };
+
+  // General Token Regular Expressions
+  const REGEX_STRING = /^(['"`].*?['"`:;]|['"].*)$/; // Matches strings
+  const REGEX_COMMENT = /^(\/\/|#|\/\*|\*)/; // Matches comments
+  const REGEX_NUMBER = /^\d+(\.\d+)?$/; // Matches integers and floats
+  const REGEX_OPERATOR = /^(\+|\-|\*|\/|\%|&&|\|\||!|===?|!==?|<=?|>=?|==|!=|\{|\}|\[|\]|\(|\)|:|,|;|\.|\?)$/;
+
+  // HTML/CSS Regex
+  const REGEX_HTML_TAG_OPEN = /^<[a-zA-Z]/i; // Starts with <letter
+  const REGEX_HTML_TAG_CLOSE = /^<\/[a-zA-Z]/i; // Starts with </letter
+  const REGEX_HTML_MACRO = /^<!DOCTYPE/i; // HTML Document type
+
+  const CSS_PROPERTIES = /^(font|margin|padding|width|height|color|background|display|position|border|flex|grid|justify|align|text-align|transform|transition|animation|keyframes)$/i;
+
+  /**
+   * Determines the appropriate CSS class for a given word based on the language context.
+   */
+  function getTokenType(word, language) {
+      const sanitizedWord = word.replace(/[{};:()"'=]/g, '');
+
+      // 1. Strings (Orange: #ce9178)
+      if (REGEX_STRING.test(word)) return 'vs-string';
+      
+      // 2. Comments (Green: #6a9955)
+      if (REGEX_COMMENT.test(word)) return 'vs-comment';
+
+      // 3. Numbers (Light Green: #b5cea8)
+      if (REGEX_NUMBER.test(sanitizedWord)) return 'vs-number';
+
+      // 4. Language-Specific Highlighting
+      if (['html', 'css', 'javascript', 'python', 'java', 'custom'].includes(language)) {
+          
+          // Use JS rules for custom text unless explicitly set
+          const lang = language === 'custom' ? 'javascript' : language;
+
+          // --- HTML ---
+          if (lang === 'html') {
+              // Tags (Light Blue: #569cd6)
+              if (REGEX_HTML_TAG_OPEN.test(word) || REGEX_HTML_TAG_CLOSE.test(word)) {
+                  // Find the tag name only (e.g., 'div', 'p', 'html')
+                  const tagNameMatch = word.match(/<[\/]*([a-zA-Z0-9]+)/i);
+                  if (tagNameMatch) {
+                      return 'vs-html-name'; 
+                  }
+              }
+              // Attributes (Light Green: #9cd6ac) - If contains = or : and is not string/number
+              if (word.includes('=') && !REGEX_STRING.test(word)) return 'vs-attribute';
+              
+              // Macros/Directives (Light Gray: #c8c8c8)
+              if (REGEX_HTML_MACRO.test(word)) return 'vs-macro';
+              
+              // Handle punctuation that might be part of the tag structure
+              if (word === '<' || word === '>' || word === '</' || word === '/>') return 'vs-html-tag';
+          }
+
+          // --- CSS ---
+          if (lang === 'css') {
+              // Properties (Magenta: #c586c0)
+              if (CSS_PROPERTIES.test(sanitizedWord)) return 'vs-css-property';
+              // Selectors (Gold/Brown: #d7ba7d)
+              if (word.startsWith('.') || word.startsWith('#') || word.startsWith('@')) return 'vs-css-selector'; 
+              // Values (Orange/Brown: #ce9178) - Units, specific values
+              if (word.endsWith('px') || word.endsWith('em') || word.endsWith('rem') || word.startsWith('#') || sanitizedWord === 'flex' || sanitizedWord === 'block' || sanitizedWord === 'center' || sanitizedWord === 'auto' || sanitizedWord === 'visible') return 'vs-css-value';
+          }
+
+          // --- Code Languages (Python/Java/JavaScript) ---
+          
+          // Keywords (Light Blue: #569cd6)
+          if (KEYWORDS[lang] && KEYWORDS[lang].test(sanitizedWord)) return 'vs-keyword';
+          
+          // Types (Teal: #4ec9b0)
+          if (TYPE_IDENTIFIERS[lang] && TYPE_IDENTIFIERS[lang].test(sanitizedWord)) return 'vs-type';
+
+          // Built-ins (Yellow: #dcdcaa)
+          if (BUILTINS[lang] && BUILTINS[lang].test(sanitizedWord)) return 'vs-builtin';
+          
+          // --- General Operators (White/Grey: #d4d4d4) ---
+          if (REGEX_OPERATOR.test(word)) return 'vs-operator';
+      }
+      
+      // 5. Default (White/Grey: #d4d4d4)
+      return 'default'; 
+  }
+
+  // --- END SYNTAX HIGHLIGHTING LOGIC ---
+
+
+  // Custom Alert/Message Box Function (Same as previous)
+  function showCustomMessage(title, message, isConfirm = false, onConfirm = () => {}) {
+    const modal = document.createElement('div');
+    modal.className = 'custom-modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <span class="close-btn" onclick="this.closest('.custom-modal').remove()">&times;</span>
+        <h2 class="text-white text-lg font-semibold mb-3">${title}</h2>
+        <p class="text-sm text-gray-300" style="white-space: pre-wrap; text-align: left; margin-bottom: 15px;">${message}</p>
+        <div class="flex justify-end space-x-2">
+          ${isConfirm ? `<button class="text-sm px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white" onclick="this.closest('.custom-modal').remove()">Cancel</button>` : ''}
+          <button class="primary text-sm px-4 py-2" onclick="${isConfirm ? 'onConfirm();' : ''} this.closest('.custom-modal').remove()">OK</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    if (isConfirm) {
+        modal.querySelector('.primary').onclick = () => {
+            onConfirm();
+            modal.remove();
+        };
+    }
+  }
+  window.alert = (message) => showCustomMessage("Notification", message);
+  window.confirm = (message) => {
+    return true; 
+  };
+
+
+  /**
+   * Generates the word list from the selected source. (Same as previous)
+   */
+  function getWordsFromSource(sourceKey, difficulty = 'medium'){
+    if (sourceKey === 'wordlist'){
+        const pool = BASE_WORDS[difficulty].slice();
+        const out = [];
+        // Generate a long list of random words from the pool
+        for (let i=0;i<250;i++){ 
+            const w = pool[Math.floor(Math.random()*pool.length)];
+            out.push(w);
+        }
+        return out;
+    } else {
+        const sourceArray = CUSTOM_SOURCES[sourceKey];
+        if (!sourceArray || sourceArray.length === 0) {
+            return getWordsFromSource('wordlist', difficulty);
+        }
+        
+        let index = SOURCE_INDEXES[sourceKey] || 0;
+        
+        let text = sourceArray[index] || '';
+
+        // Update index for the next run (round-robin)
+        SOURCE_INDEXES[sourceKey] = (index + 1) % sourceArray.length;
+        
+        text = text.replace(/[\n\t\r]/g, ' ');
+        // Finds all sequences of non-whitespace characters
+        const words = text.match(/(\S+)/g) || [];
+        
+        if (words.length === 0 && sourceKey === 'custom') {
+            showCustomMessage("Custom Text Error", "Please enter valid text for the custom test. Reverting to default word list.");
+            sourceSelect.value = 'wordlist'; 
+            return getWordsFromSource('wordlist', difficulty);
+        }
+
+        return words;
+    }
+  }
+
+  /**
+   * Renders words, applying syntax highlighting classes if necessary.
+   */
+  function renderWords(){
+    wordArea.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    
+    // Determine if we need to apply syntax highlighting
+    const currentSource = sourceSelect.value;
+    const isCodeSource = ['python', 'css', 'html', 'java', 'javascript', 'custom', 'it_knowledge'].includes(currentSource);
+    // If 'custom' is selected, we default to JavaScript rules for general code highlighting
+    const languageContext = currentSource === 'custom' ? 'javascript' : currentSource;
+
+    words.forEach((w, i) => {
+      const span = document.createElement('span');
+      // Add a space to the end of the word for separation and to allow the spacebar to be the target key
+      span.textContent = w + ' '; 
+      
+      let tokenClass = '';
+      if (isCodeSource) {
+          tokenClass = getTokenType(w, languageContext);
+      }
+
+      // Start with base class, add 'current', and then add the token class if it's not 'default'
+      // Default class has no effect on color, as the base .word style defines the default text color
+      span.className = 'word' + (i === currentIndex ? ' current' : '') + (tokenClass !== 'default' ? ` ${tokenClass}` : '');
+      
+      frag.appendChild(span);
+    });
+    
+    wordArea.appendChild(frag);
+    wordCountEl.textContent = words.length;
+    
+    setTimeout(()=> {
+      const cur = wordArea.querySelector('.word.current');
+      if (cur) cur.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 0);
+  }
+
+  function startTest(){
+    clearInterval(timer);
+    
+    // --- 1. Determine Duration and Mode ---
+    const durationType = durationSelect.value;
+    isUnlimited = durationType === 'unlimited';
+    
+    if (isUnlimited) {
+        duration = Infinity;
+        timeLeft = 0;
+    } else if (durationType === 'custom_input') {
+        let customVal = parseInt(customTimeInput.value, 10);
+        if (isNaN(customVal) || customVal <= 0) {
+            customVal = 60;
+            customTimeInput.value = 60;
+            showCustomMessage("Time Error", "Invalid custom time. Defaulting to 60 seconds.");
+        }
+        duration = customVal;
+        timeLeft = customVal;
+    } else {
+        duration = parseInt(durationType, 10) || 60;
+        timeLeft = duration;
+    }
+
+    // --- 2. Load Words and Reset State ---
+    words = getWordsFromSource(sourceSelect.value, difficultySelect.value);
+    
+    currentIndex = 0;
+    typedWords = 0; correct = 0; incorrect = 0;
+    started = false;
+    
+    // --- 3. Update UI and Focus ---
+    updateStats();
+    renderWords();
+    
+    textInput.value = '';
+    textInput.disabled = false;
+    textInput.focus();
+    
+    if (isUnlimited) {
+        timeLeftEl.textContent = '∞';
+    } else {
+        timeLeftEl.textContent = `${timeLeft}s`;
+    }
+    progBar.style.width = '0%';
+    highlightNextKey(); // Initialize keyboard highlight
+  }
+
+  function updateStats(){
+    wordsTypedEl.textContent = typedWords;
+    correctEl.textContent = correct;
+    incorrectEl.textContent = incorrect;
+    const acc = typedWords === 0 ? 100 : Math.round((correct / typedWords) * 100);
+    accuracyEl.textContent = `${acc}%`;
+    
+    let elapsed;
+    if (isUnlimited) {
+        elapsed = timeLeft; 
+    } else {
+        elapsed = (duration - timeLeft); 
+    }
+
+    const wpm = elapsed === 0 ? 0 : Math.round((correct) / (elapsed / 60));
+    wpmEl.textContent = wpm;
+    
+    const prog = Math.min(100, Math.round(((currentIndex) / words.length) * 100));
+    progBar.style.width = prog + '%';
+  }
+
+  function finishTest(){
+    clearInterval(timer);
+    textInput.disabled = true;
+    started = false;
+    
+    const finalElapsed = isUnlimited ? timeLeft : (duration - timeLeft);
+    const finalWpm = finalElapsed === 0 ? 0 : Math.round((correct) / (finalElapsed / 60));
+    
+    highlightNextKey(true); // Clear keyboard highlight
+
+    showCustomMessage("Test Complete!", 
+        `WPM: ${finalWpm}\n` + 
+        `Accuracy: ${accuracyEl.textContent}\n` +
+        `Time Taken: ${isUnlimited ? finalElapsed + 's elapsed' : duration + 's'}`
+    );
+    wpmEl.textContent = finalWpm;
+  }
+
+  // Timer logic for both standard and unlimited modes
+  function startTimer(){
+    if (started) return;
+    started = true;
+    
+    if (isUnlimited) {
+        timeLeft = 0;
+        timer = setInterval(() => {
+            timeLeft++;
+            timeLeftEl.textContent = `${timeLeft}s elapsed`;
+            updateStats();
+        }, 1000);
+    } else {
+        timer = setInterval(() => {
+            timeLeft--;
+            timeLeftEl.textContent = `${timeLeft}s`;
+            updateStats();
+            if (timeLeft <= 0) finishTest();
+        }, 1000);
+    }
+  }
+
+  // --- Keyboard Logic Functions --- (Same as previous)
+  
+  /**
+   * Generates the virtual keyboard HTML structure.
+   */
+  function createVirtualKeyboard() {
+    let keyboardHTML = '';
+    KEYBOARD_LAYOUT.forEach(row => {
+        keyboardHTML += '<div class="keyboard-row">';
+        row.forEach(key => {
+            const isShifted = key.shift && key.char;
+            let content;
+
+            if (key.text) {
+                content = `<div class="key-content">${key.text}</div>`;
+            } else if (isShifted) {
+                content = `<div class="key-content"><span class="top-char">${key.shift}</span><span class="bottom-char">${key.char}</span></div>`;
+            } else if (key.char) {
+                content = `<div class="key-content">${key.char.toUpperCase()}</div>`;
+            }
+            
+            const dataKeys = key.data ? `data-key="${key.data}"` : ''; 
+            
+            keyboardHTML += `<div class="key ${key.class || ''}" ${dataKeys}>${content}</div>`;
+        });
+        keyboardHTML += '</div>';
+    });
+    virtualKeyboard.innerHTML = keyboardHTML;
+  }
+  
+  /**
+   * Clears all current keyboard highlights.
+   */
+  function clearHighlights() {
+      if (currentKeyElement) {
+        currentKeyElement.classList.remove('highlight');
+        currentKeyElement = null;
+      }
+      if (currentShiftKeyElement) {
+        currentShiftKeyElement.classList.remove('highlight');
+        currentShiftKeyElement = null;
+      }
+  }
+
+  /**
+   * Highlights the key corresponding to the next expected character, including Shift/Caps guidance.
+   */
+  function highlightNextKey(clearOnly = false) {
+    clearHighlights();
+    
+    if (clearOnly || virtualKeyboard.style.display === 'none' || currentIndex >= words.length) {
+      return;
+    }
+
+    const currentWordText = words[currentIndex] + ' ';
+    const currentTypedLength = textInput.value.length;
+    
+    if (currentTypedLength >= currentWordText.length) {
+        return; 
+    }
+    
+    const nextChar = currentWordText.charAt(currentTypedLength);
+    
+    let isShiftNeeded = false;
+    let targetKeyData = null;
+    let targetKeyElement = null;
+
+    // --- 1. Find the target key data and check for shift requirement ---
+    
+    // Check if the character is an uppercase letter
+    if (/[A-Z]/.test(nextChar)) {
+        isShiftNeeded = true;
+        targetKeyData = nextChar.toLowerCase();
+    } 
+    // Check if the character is a symbol that requires Shift
+    else {
+        targetKeyData = KEYBOARD_LAYOUT.flat().find(keyData => {
+            if (keyData.char === nextChar) return true;
+            
+            if (keyData.shift === nextChar) {
+                isShiftNeeded = true;
+                return true;
+            }
+            return false;
+        });
+
+        if (targetKeyData) {
+            targetKeyData = targetKeyData.data;
+        } else {
+            if (nextChar === ' ') targetKeyData = ' '; 
+        }
+    }
+    
+    // --- 2. Highlight the target key ---
+    if (targetKeyData) {
+        targetKeyElement = virtualKeyboard.querySelector(`[data-key="${targetKeyData}"]`);
+        if (targetKeyElement) {
+            targetKeyElement.classList.add('highlight');
+            currentKeyElement = targetKeyElement;
+        }
+    }
+
+    // --- 3. Highlight Shift Key if required ---
+    if (isShiftNeeded) {
+        const shiftKeyToHighlight = virtualKeyboard.querySelector('.left-shift'); 
+        
+        if (shiftKeyToHighlight) {
+            shiftKeyToHighlight.classList.add('highlight');
+            currentShiftKeyElement = shiftKeyToHighlight;
+        }
+    }
+  }
+
+  // Input handling
+  textInput.addEventListener('input', () => {
+      // Start timer on first input
+      if (!started && textInput.value.length > 0) startTimer();
+      highlightNextKey(); // Update highlight on every character typed
+  });
+  
+  textInput.addEventListener('keydown', (e) => {
+    if (textInput.disabled) return;
+
+    if (e.key === ' ' || e.key === 'Enter'){
+      e.preventDefault();
+      
+      // Start timer if not started and space/enter is pressed
+      if (!started) startTimer();
+
+      const value = textInput.value; 
+      const expected = words[currentIndex] || ''; 
+      
+      if (value.length === 0 && currentIndex < words.length) {
+          return;
+      }
+      
+      const isCorrect = value === expected;
+      
+      if (currentIndex < words.length) {
+          typedWords++;
+          const spans = wordArea.querySelectorAll('.word');
+          if (spans[currentIndex]){
+              spans[currentIndex].classList.remove('current', 'correct', 'incorrect');
+              spans[currentIndex].classList.add(isCorrect ? 'correct' : 'incorrect');
+          }
+
+          if (isCorrect){
+            correct++;
+          } else {
+            incorrect++;
+          }
+          currentIndex++;
+      }
+
+      textInput.value = '';
+      
+      // Update the 'current' highlight for the next word
+      const spans = wordArea.querySelectorAll('.word');
+      if (currentIndex < spans.length) {
+          spans[currentIndex].classList.add('current');
+      }
+
+      updateStats();
+      
+      // Auto-finish if all words are typed (required for unlimited mode)
+      if (currentIndex >= words.length) {
+          // If in unlimited time mode, load the next passage/set of words
+          if (isUnlimited) {
+              words = getWordsFromSource(sourceSelect.value, difficultySelect.value);
+              currentIndex = 0; // Reset index for the new words
+              renderWords();
+              highlightNextKey();
+              textInput.focus();
+              return; // Skip finishTest
+          } else {
+              finishTest();
+          }
+      } else {
+          highlightNextKey(); // Update highlight for the new word
+      }
+
+      const cur = wordArea.querySelector('.word.current');
+      if (cur) cur.scrollIntoView({behavior:'smooth', block:'center'});
+      
+    } else if (e.key === 'Tab'){
+      e.preventDefault(); 
+    }
+  });
+
+
+  // Event Listeners for Controls (now reliably trigger startTest)
+  restartBtn.addEventListener('click', startTest);
+  difficultySelect.addEventListener('change', startTest); 
+  sourceSelect.addEventListener('change', ()=> {
+    // If 'custom' is selected, open the modal if no text is present
+    if (sourceSelect.value === 'custom' && CUSTOM_SOURCES.custom[0].length < 100) {
+        customModal.style.display = 'block';
+        customTextArea.focus();
+    }
+    startTest();
+  });
+  
+  // Logic to show/hide custom time input
+  durationSelect.addEventListener('change', ()=> {
+    const showCustom = durationSelect.value === 'custom_input';
+    const isUnlimitedMode = durationSelect.value === 'unlimited';
+
+    customTimeInput.style.display = showCustom ? 'block' : 'none';
+    
+    if (isUnlimitedMode) {
+        timeLeftEl.textContent = '∞';
+        startTest(); 
+    } else if (!showCustom) {
+        timeLeftEl.textContent = `${durationSelect.value}s`;
+        startTest(); 
+    }
+  });
+  
+  // Custom time input change should also restart the test
+  customTimeInput.addEventListener('change', startTest);
+
+
+  // Keyboard Toggle Logic
+  keyboardToggleBtn.addEventListener('click', () => {
+    const isVisible = virtualKeyboard.style.display === 'flex';
+    if (isVisible) {
+      virtualKeyboard.style.display = 'none';
+      keyboardToggleBtn.textContent = 'Show Keyboard';
+      highlightNextKey(true); // Clear highlight when closing
+    } else {
+      virtualKeyboard.style.display = 'flex';
+      keyboardToggleBtn.textContent = 'Hide Keyboard';
+      highlightNextKey(); // Set highlight when opening
+    }
+  });
+
+  // Custom Text Modal Logic
+  customSourceBtn.addEventListener('click', () => {
+    // Show the current custom text in the textarea
+    customTextArea.value = CUSTOM_SOURCES.custom[0];
+    customModal.style.display = 'block';
+    customTextArea.focus();
+  });
+
+  closeModal.addEventListener('click', () => {
+    customModal.style.display = 'none';
+  });
+
+  submitCustomTextBtn.addEventListener('click', () => {
+    const customText = customTextArea.value.trim();
+
+    if (customText.length === 0) {
+        showCustomMessage("Submission Error", "Please paste or type text in the box before submitting.");
+        return;
+    }
+    
+    // Store the custom text as the first (and only) element in the custom source array
+    CUSTOM_SOURCES.custom = [customText];
+    sourceSelect.value = 'custom';
+    customModal.style.display = 'none';
+    startTest(); 
+  });
+
+
+  // Close modal when clicking outside
+  window.addEventListener('click', (event) => {
+    if (event.target == customModal) {
+      customModal.style.display = 'none';
+    }
+  });
+
+
+  // Leaderboard (Local Storage)
+  function loadLeaderboard(){
+    try {
+      const raw = localStorage.getItem('fasttype_board');
+      return raw? JSON.parse(raw): [];
+    } catch(e){ return [];}
+  }
+  function saveLeaderboard(list){
+    try { localStorage.setItem('fasttype_board', JSON.stringify(list)); } catch(e){}
+  }
+  function renderLeaderboard(){
+    const list = loadLeaderboard().slice(0,8);
+    leaderboardList.innerHTML = '';
+    list.forEach(item => {
+      const li = document.createElement('li');
+      // Update display to correctly show unlimited time notation
+      const timeDisplay = item.isUnlimited ? `${item.time}s elapsed` : `${item.time}s`;
+      li.textContent = `${item.name || 'Anonymous'} — ${item.wpm} WPM (${item.acc}, ${timeDisplay})`;
+      leaderboardList.appendChild(li);
+    });
+  }
+
+  saveBtn.addEventListener('click', ()=>{
+    const name = nameInput.value.trim() || 'Anonymous';
+    const wpm = parseInt(wpmEl.textContent, 10) || 0;
+    const acc = accuracyEl.textContent || '0%';
+    
+    // Record duration as time limit (or elapsed time if unlimited)
+    const timeToRecord = isUnlimited ? timeLeft : duration; 
+    const isUnlim = isUnlimited;
+
+    const list = loadLeaderboard();
+    list.push({name, wpm, acc, time: timeToRecord, created:Date.now(), isUnlimited: isUnlim});
+    list.sort((a,b)=> b.wpm - a.wpm);
+    saveLeaderboard(list.slice(0,30));
+    renderLeaderboard();
+    showCustomMessage("Score Saved", `Your score (${wpm} WPM) has been saved to the local leaderboard.`);
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    showCustomMessage("Confirm Clear", "Are you sure you want to clear the local leaderboard?", true, () => {
+        localStorage.removeItem('fasttype_board');
+        renderLeaderboard();
+    });
+  });
+
+  // Initial load
+  createVirtualKeyboard();
+  startTest();
+  renderLeaderboard();
+
+  // Focus the input on click anywhere
+  document.addEventListener('click', (e)=> {
+    if (!textInput.disabled && !customModal.contains(e.target)) textInput.focus();
+  });
+})();
+</script>
+</body>
+</html>
